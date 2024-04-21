@@ -1,52 +1,72 @@
 function cuckoo_hash_table() {
-    this.capacity = 256;
+	this.capacity = 256;
 	this.elems = new Array(256);
 	this.hash1 = function(key) { return key; };
 	this.hash2 = function(key) { return key; };
 	this.rehash = function() {
-        let secondary = [];
-        const g = function(key) {
-            let hash = 0;
-            const rand1 = Math.floor(Math.random() * this.capacity), rand2 = Math.floor(Math.random() * this.capacity);
-		    for (let idx = 0; idx < key.length; idx++) { hash += key.charCodeAt(idx) * rand1 + rand2; }
-            return hash;
-        };
-        let displace = function(key) { return key; };
-        //Use separate chaining to insert elements into the secondary table
-        for (let key in this.elems) {
-            if (secondary[g(key)] === undefined || secondary[g(key)] === null) { secondary.push([]); }
-            secondary[g(key)].push(this.elems[key]);
-        }
-        this.capacity *= 2;
-        this.elems = new Array(this.capacity);
-        //collisions may have occured, so reinsert all remaining elements in decending order ...
-        let sorted = [];
-        for (let chain in secondary) {
-            for (let key in secondary) {
-                ;
-            }
-        }
-        //... AND WITHOUT COLLISIONS
-        for (let chain in secondary) {
-            for (let key in secondary) {
-                ;
-            }
-        }
-		this.hash1 = function(key) { return g(displace(x)); };
-		this.hash2 = function(key) {
-            return g(function(key) {
-                let hash = displace(key);
-                const rand1 = Math.floor(Math.random() * this.capacity), rand2 = Math.floor(Math.random() * this.capacity);
-		        for (let idx = 0; idx < key.length; idx++) { hash += key.charCodeAt(idx) * rand1 + rand2; }
-                return hash;
-            }(x));
-        };
+		let secondary = [];
+		const g = function(key) {
+        	let hash = 0;
+        	const rand1 = Math.floor(Math.random() * this.capacity), rand2 = Math.floor(Math.random() * this.capacity);
+			for (let idx = 0; idx < key.length; idx++) { hash += key.charCodeAt(idx) * rand1 + rand2; }
+			return hash;
+		};
+		let displace1 = function(key) { return key; };
+		let displace2 = function(key) { return key; };
+		//Use separate chaining to insert elements into the secondary table
+		for (let key in this.elems) {
+			if (secondary[g(key)] === undefined || secondary[g(key)] === null) { secondary.push([]); }
+			secondary[g(key)].push(this.elems[key]);
+		}
+		this.capacity *= 2;
+		this.elems = new Array(this.capacity);
+
+		this.hash1 = function(key) { function(key) { return f(g(x)); } };
+		this.hash2 = function(key) { function(key) { return f(g(x)); } };
+		
+		//collisions may have occured, so reinsert all remaining elements in decending order ...
+		let sortedIndexies = [];
+		for (let chain in secondary) {
+			let idx = sortedIndexies.length;
+			while (idx > 0 && sortedIndexies[idx - 1] >= secondary[chain].length) {
+				sortedIndexies[idx] = sortedIndexies[idx - 1];
+				idx--;
+			}
+			sortedIndexies[idx] = chain;
+		}
+		//... AND WITHOUT COLLISIONS
+		for (let chain in sortedIndexies) {
+			//while (displace1(chain) is not injective && displace2(chain) is not injective) {
+			let injection1 = function (key) {
+				let hash = 0;
+        		const rand1 = Math.floor(Math.random() * this.capacity), rand2 = Math.floor(Math.random() * this.capacity);
+				for (let idx = 0; idx < key.length; idx++) { hash += key.charCodeAt(idx) * rand1 + rand2; }
+				return hash;
+			};
+			for (let key in secondary[chain]) {
+				;
+			}
+			displace1 = displace1(injection1);
+			let injection2 = function (key) {
+				let hash = 0;
+        		const rand1 = Math.floor(Math.random() * this.capacity), rand2 = Math.floor(Math.random() * this.capacity);
+				for (let idx = 0; idx < key.length; idx++) { hash += key.charCodeAt(idx) * rand1 + rand2; }
+				return hash;
+			};
+			for (let key in secondary[chain]) {
+				;
+			}
+			displace2 = displace2(injection2);
+			//}
+		}
+		this.hash1 = function(key) { return displace1(g(x)); };
+		this.hash2 = function(key) { return displace2(g(x)); };
 	};
 	this.insert = function(key, value) {
 		const failed_first_time = false, failed_second_time = false;
-        if (this.capacity <= this.elems.length) { this.rehash(); }
+		if (this.capacity <= this.elems.length) { this.rehash(); }
 		while (!(failed_first_time && failed_second_time)) {
-            const h1 = this.hash1(key);
+			const h1 = this.hash1(key);
 			if (this.elems[h1 + 1] === null || this.elems[h1 + 1] === undefined) {
 				this.elems[h1 + 1] = this.elems[h1];
 				this.elems[h1] = [key, value];
@@ -56,8 +76,8 @@ function cuckoo_hash_table() {
 			const kickedElem1 = this.elems[h1 + 1];
 			this.elems[h1 + 1] = this.elems[h1];
 			failed_first_time = kickedElem1[0] === key || failed_first_time;
-
-            const h2 = this.hash2(key);
+			
+			const h2 = this.hash2(key);
 			if (this.elems[h2 + 1] === null || this.elems[h2 + 1] === undefined) {
 				this.elems[h2 + 1] = this.elems[h2];
 				this.elems[h2] = [key, value];
