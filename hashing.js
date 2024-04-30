@@ -157,69 +157,64 @@ function cuckoo_hash_table() {
 		for (let curHash = 0; this.keyCount < this.capacity && curHash < hashes.length; curHash++) {
 			const hash = hashes[curHash];
 			if (!this.elems[hash]) { this.values[hash] = curVal; this.keyCount++; return; }
-	   		let keystack = [curKey], valstack = [curVal], path = [hash];
-			
-	    	const tempKey = this.elems[hash];
+	   		let path = [hash];
+			const tempKey = this.elems[hash];
 			this.elems[hash] = curKey;
 	 		curKey = tempKey;
 	   		const tempVal = this.values[hash];
 			this.values[hash] = curVal;
-	 		curKey = tempVal;
+	 		curVal = tempVal;
 			isFull |= 1n << BigInt(hash);
 			let hasFailed = false;
-			
 			//Reverse deep search from each hash
-	    	while (!hasFailed) {
+			while (!hasFailed) {
 				hasFailed = true;
 				const h1 = this.hash1(curKey), h2 = this.hash2(curKey), h3 = this.hash3(curKey);
 	   			if ((isFull & 1n << BigInt(h1)) === 0n) {
 		   			if (!this.elems[h1]) { this.values[h1] = curVal; this.keyCount++; return; }
-					path.push(h1); keystack.push(curKey); valstack.push(curVal);
-					
+					path.push(h1);
 		   			const tempKey = this.elems[h1];
 					this.elems[h1] = curKey;
 		 			curKey = tempKey;
 		   			const tempVal = this.values[h1];
 					this.values[h1] = curVal;
-		 			curKey = tempVal;
+		 			curVal = tempVal;
 					isFull |= 1n << BigInt(h1);
 					hasFailed = false;
 				}
 				if ((isFull & 1n << BigInt(h2)) === 0n) {
 		   			if (!this.elems[h2]) { this.values[h2] = curVal; this.keyCount++; return; }
-					path.push(h2); keystack.push(curKey); valstack.push(curVal);
-					
+					path.push(h2);
 		   			const tempKey = this.elems[h2];
 					this.elems[h2] = curKey;
 		 			curKey = tempKey;
 		   			const tempVal = this.values[h2];
 					this.values[h2] = curVal;
-		 			curKey = tempVal;
+		 			curVal = tempVal;
 					isFull |= 1n << BigInt(h2);
 					hasFailed = false;
 				}
 				if ((isFull & 1n << BigInt(h3)) === 0n) {
 		   			if (!this.elems[h3]) { this.values[h3] = curVal; this.keyCount++; return; }
-					path.push(h3); keystack.push(curKey); valstack.push(curVal);
-					
+					path.push(h3);
 		   			const tempKey = this.elems[h3];
 					this.elems[h3] = curKey;
 		 			curKey = tempKey;
 		   			const tempVal = this.values[h3];
 					this.values[h3] = curVal;
-		 			curKey = tempVal;
+		 			curVal = tempVal;
 					isFull |= 1n << BigInt(h3);
 					hasFailed = false;
 				}
 			}
-			while (stack.length > 0) {
-				const curTopKey = keystack.pop(), curTopVal = valstack.pop(), curEdge = path.pop();
+			while (path.length > 0) {
+				const curEdge = path.pop();
 				const tempKey = this.elems[curEdge];
-				this.elems[curEdge] = curTopKey;
+				this.elems[curEdge] = curKey;
 	 			curKey = tempKey;
 	   			const tempVal = this.values[curEdge];
-				this.values[curEdge] = curTopVal;
-	 			curKey = tempVal;
+				this.values[curEdge] = curVal;
+	 			curVal = tempVal;
 			}
 			isFull = 0n;
 		}
