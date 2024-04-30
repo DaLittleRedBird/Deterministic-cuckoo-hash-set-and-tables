@@ -1,3 +1,75 @@
+function bipartiteGraph() {
+	const INF = Math.MAX_SAFE_INT;
+	this.whiteSet = [];
+	this.blackSet = [];
+	this.edges = [];
+	this.__pairU = [];
+	this.__pairV = [];
+	this.distances = [];
+	this.addWhiteVertex = function(u) { this.edges[u] = []; this.whiteSet.push(u); }
+	this.addBlackVertex = function(v) { this.edges[v] = []; this.blackSet.push(v); }
+	this.addEdgePair = function(u, v) { this.edges[u].push(v); this.edges[v].push(u); }
+	this.composeEdges = function(vertex, edge1, edge2) { return this.edges[this.edges[vertex][outedge]][inedge]; }
+	this.broadSearch = function() {
+		let queue = [];
+		for (let u = 1; u <= this.edges.length; u++) {
+      		if (this.__pairU[u] === null || this.__pairU[u] === undefined) {
+        		this.distances[u] = 0;
+        		queue.push(u);
+      		} else { this.distances[u] = INF; }
+    	}
+    	this.distances[0] = INF;
+		while (queue.length > 0) {
+			const first = queue.shift();
+			const u = queue.shift();
+			if (this.distances[u] < this.distances[0]) {
+				for (const v of this.edges[u]) {
+					if (this.distances[this.__pairV[v]] === INF) {
+						this.distances[this.__pairV[v]] = this.distances[u] + 1;
+						queue.push(this.__pairV[v]);
+					}
+				}
+			}
+		}
+		return this.distances[0] !== INF;
+	}
+	this.deepSearch = function(u) {
+		if (u !== 0) {
+			let stack = [u], isVisited = Array(this.whiteSet.length + this.blackSet.length + 1).fill(false);
+			while (stack.length > 0) {
+				const last = stack.pop();
+				isVisited[last] = true;
+				for (const v of this.edges[last]) {
+					if (this.distances[this.__pairV[v]] === this.distances[u] + 1) {
+						if (isVisited[this.__pairV[v]]) {
+							this.__pairV[v] = u;
+							this.__pairU[u] = v;
+							return true;
+						}
+					}
+				}
+			}
+			this.distances[u] = INF;
+			return false;
+		}
+    	return true;
+	}
+	this.hopcroftKarp = function() {
+		this.__pairU = Array(this.edges.length + 1).fill(0);
+		this.__pairV = Array(this.edges.length + 1).fill(0);
+		this.distances = Array(this.edges.length + 1).fill(0);
+		let result = 0, path = [];
+		while (this.broadSearch()) {
+			for (let u = 1; u <= this.edges.length; u++) {
+				if (this.__pairU[u] === null || this.__pairU[u] === undefined && this.deepSearch(u)) result++;
+			}
+		}
+		let path = [];
+		for (let key in this.__pairU) path.push([key, this.__pairU[key]]);
+		return path; //path.length is the size of the maximum matching
+	}
+}
+
 function cuckoo_hash_table() {
 	this.capacity = 0;
 	this.keyCount = 0;
@@ -59,80 +131,6 @@ function cuckoo_hash_table() {
 					isFull |= shift3;
 					this.keyCount++;
 				}
-				/*
-				const hash1 = this.hash1(key), hash2 = this.hash2(key), hash3 = this.hash3(key);
-				if (this.elems[hash1] === key) { this.values[hash1] = value; return; }
-				if (this.elems[hash2] === key) { this.values[hash2] = value; return; }
-				if (this.elems[hash3] === key) { this.values[hash3] = value; return; }
-
-				let curKey = key, curVal = value, isFull = 0n;
-				//A derandomized 3-hash cuckoo hashing insertion algorithm
-				const hashes = [hash1, hash2, hash3];
-				for (let curHash = 0; this.keyCount < this.capacity && curHash < hashes.length; curHash++) {
-					const hash = hashes[curHash];
-					if (!this.elems[hash]) { this.values[hash] = curVal; this.keyCount++; return; }
-			   		let path = [hash];
-					const tempKey = this.elems[hash];
-					this.elems[hash] = curKey;
-			 		curKey = tempKey;
-			   		const tempVal = this.values[hash];
-					this.values[hash] = curVal;
-			 		curVal = tempVal;
-					isFull |= 1n << BigInt(hash);
-					let hasFailed = false;
-					//Reverse deep search from each hash
-					while (!hasFailed) {
-						hasFailed = true;
-						const h1 = this.hash1(curKey), h2 = this.hash2(curKey), h3 = this.hash3(curKey);
-			   			if ((isFull & 1n << BigInt(h1)) === 0n) {
-				   			if (!this.elems[h1]) { this.values[h1] = curVal; this.keyCount++; return; }
-							path.push(h1);
-				   			const tempKey = this.elems[h1];
-							this.elems[h1] = curKey;
-				 			curKey = tempKey;
-				   			const tempVal = this.values[h1];
-							this.values[h1] = curVal;
-				 			curVal = tempVal;
-							isFull |= 1n << BigInt(h1);
-							hasFailed = false;
-						}
-						if ((isFull & 1n << BigInt(h2)) === 0n) {
-				   			if (!this.elems[h2]) { this.values[h2] = curVal; this.keyCount++; return; }
-							path.push(h2);
-				   			const tempKey = this.elems[h2];
-							this.elems[h2] = curKey;
-				 			curKey = tempKey;
-				   			const tempVal = this.values[h2];
-							this.values[h2] = curVal;
-				 			curVal = tempVal;
-							isFull |= 1n << BigInt(h2);
-							hasFailed = false;
-						}
-						if ((isFull & 1n << BigInt(h3)) === 0n) {
-				   			if (!this.elems[h3]) { this.values[h3] = curVal; this.keyCount++; return; }
-							path.push(h3);
-				   			const tempKey = this.elems[h3];
-							this.elems[h3] = curKey;
-				 			curKey = tempKey;
-				   			const tempVal = this.values[h3];
-							this.values[h3] = curVal;
-				 			curVal = tempVal;
-							isFull |= 1n << BigInt(h3);
-							hasFailed = false;
-						}
-					}
-					while (path.length > 0) {
-						const curEdge = path.pop();
-						const tempKey = this.elems[curEdge];
-						this.elems[curEdge] = curKey;
-			 			curKey = tempKey;
-			   			const tempVal = this.values[curEdge];
-						this.values[curEdge] = curVal;
-			 			curVal = tempVal;
-					}
-					isFull = 0n;
-				}
-		  		*/
 			}
 		}
 	};
