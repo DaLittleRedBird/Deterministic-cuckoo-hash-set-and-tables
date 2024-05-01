@@ -264,6 +264,225 @@ function cuckoo_hash_table() {
 	this.rehash();
 }
 
+function KISS_cuckoo_hash_table() {
+	this.capacity = 0;
+	this.keyCount = 0;
+	this.keySet = new Array(this.capacity);
+	this.fingerSet = new Array(this.capacity);
+	this.values = new Array(this.capacity);
+	this.main_hash = function(key) { return key % this.capacity; };
+	this.secondary_hash = function(key) { return key % this.capacity; };
+	this.fingerprinter = function(key) { return key % this.capacity; };
+	this.rehash = function() {
+		const NUMKEYS = this.keyCount;
+		this.capacity = this.keyCount * 2;
+
+		let isFull = 0n, valid_keys = [], assocVals = [];
+		this.keyCount = 0;
+		while (this.keyCount < NUMKEYS) {
+			//Dump what's left inside this.elems into the queue
+			for (key in this.keys) {
+				valid_keys.push(this.keySet[key]);
+				valid_fingers.push(this.fingerSet[key]);
+				assocVals.push(this.values[key]);
+			}
+			this.keySet = new Array(this.capacity);
+			this.values = new Array(this.capacity);
+			
+			//Select 3 new hash functions from a known universal hash family
+			const r1 = Math.floor(Math.random() * this.capacity), r2 = Math.floor(Math.random() * this.capacity);
+			this.main_hash = function(key) { return (key * r1 + r2) % this.capacity; };
+			const r3 = Math.floor(Math.random() * this.capacity), r4 = Math.floor(Math.random() * this.capacity);
+			this.secondary_hash = function(key) { return (key * r3 + r4) % this.capacity; };
+
+			//Inject into the cuckoo hash tables
+			while (valid_keys.length > 0) {
+				let curKey = valid_keys.shift(), curFingerprint = valid_fingers.shift(), curVal = assocVals.shift();
+				const hash1 = this.main_hash(key), hash2 = this.main_hash(fingerprint), hash3 = this.secondary_hash(fingerprint);
+				const hashes = [hash1, hash1 ^ hash2, hash1 ^ hash3, hash1 ^ hash2 ^ hash3];
+				const shift1 = 1n << hashes[0], shift2 = 1n << hashes[1], shift3 = 1n << hashes[2], shift4 = 1n << hashes[3];
+				if ((isFull & shift1) !== 0n && (isFull & shift2) !== 0n && (isFull & shift3) !== 0n && (isFull & shift4) !== 0n) {
+					//Reset everything (except the capacity) and try again
+					valid_keys.push(curKey);
+					valid_fingers.push(curFingerprint);
+					assocVals.push(curVal);
+					isFull = 0n;
+					this.keyCount = 0;
+					break;
+				}
+
+				if ((isFull & shift1) === 0n) {
+					this.keySet[hashes[0]] = curKey;
+					this.fingerSet[hashes[0]] = curFingerprint;
+					this.values[hashes[0]] = curVal;
+					isFull |= shift1;
+					this.keyCount++;
+				} else if ((isFull & shift2) === 0n) {
+					this.keySet[hashes[1]] = curKey;
+					this.fingerSet[hashes[1]] = curFingerprint;
+					this.values[hashes[1]] = curVal;
+					isFull |= shift2;
+					this.keyCount++;
+				} else if ((isFull & shift3) === 0n) {
+					this.keySet[hashes[2]] = curKey;
+					this.fingerSet[hashes[2]] = curFingerprint;
+					this.values[hashes[2]] = curVal;
+					isFull |= shift3;
+					this.keyCount++;
+				} else { //(isFull & shift4) === 0n
+					this.keySet[hashes[3]] = curKey;
+					this.fingerSet[hashes[3]] = curFingerprint;
+					this.values[hashes[3]] = curVal;
+					isFull |= shift4;
+					this.keyCount++;
+				}
+			}
+		}
+	};
+	this.iskey = function(key) {
+		const fingerprint = this.fingerprinter(key), hash1 = this.main_hash(key);
+		const hash2 = this.main_hash(fingerprint), hash3 = this.secondary_hash(fingerprint);
+		return this.keySet[hash1] === key || this.keySet[hash1 ^ hash2] === key || this.keySet[hash1 ^ hash3] === key || this.keySet[hash1 ^ hash2] === key;
+	};
+	this.insert = function(key, value) {
+		const fingerprint = this.fingerprinter(key), hash1 = this.main_hash(key);
+		const hash2 = this.main_hash(fingerprint), hash3 = this.secondary_hash(fingerprint);
+		if (this.keySet[hash1] === key) { this.values[hash1] = value; return; }
+		if (this.keySet[hash1 ^ hash2] === key) { this.values[hash1 ^ hash2] = value; return; }
+		if (this.keySet[hash1 ^ hash3] === key) { this.values[hash1 ^ hash3] = value; return; }
+		if (this.keySet[hash1 ^ hash2 ^ hash3] === key) { this.values[hash1 ^ hash2 ^ hash3] = value; return; }
+
+		let curKey = key, curFingerprint = fingerprint, curVal = value;
+		//A derandomized double 2-hash cuckoo hashing insertion algorithm
+		let curHash = hash1 ^ Math.floor(Math.random() * 2) ? 0 : hash2, isFull = 0n;
+		let shift = 1n << BigInt(curHash), failed_first_table = false, failed_second_table = false;
+		while (!failed_first_table || !failed_second_table) {
+			const tempKey = this.keySet[curHash];
+			const tempFingerprint = this.fingerSet[curHash];
+			const tempValue = this.values[curHash];
+			this.keySet[curHash] = curKey;
+			this.fingerSet[curHash] = curFingerprint;
+			this.values[curHash] = curVal;
+			isFull |= 1n << BigInt(curHash);
+
+			curHash ^= this.main_hash(tempFingerprint);
+			if (!this.keySet[curHash]) {
+				this.keySet[curHash] = tempKey;
+				this.fingerSet[curHash] = tempFingerprint;
+				this.values[curHash] = tempValue;
+				return;
+			}
+			
+			curKey = tempKey;
+			curFingerprint = tempFingerprint;
+			curVal = tempValue;
+			shift = 1n << BigInt(curHash);
+			if ((isFull & shift) === 0n) { failed_first_table = true; }
+
+			const tempKey = this.keySet[curHash];
+			const tempFingerprint = this.fingerSet[curHash];
+			const tempValue = this.values[curHash];
+			this.keySet[curHash] = curKey;
+			this.fingerSet[curHash] = curFingerprint;
+			this.values[curHash] = curVal;
+			isFull |= 1n << BigInt(curHash);
+
+			curHash ^= this.main_hash(tempFingerprint);
+			if (!this.keySet[curHash]) {
+				this.keySet[curHash] = tempKey;
+				this.fingerSet[curHash] = tempFingerprint;
+				this.values[curHash] = tempValue;
+				return;
+			}
+			
+			curKey = tempKey;
+			curFingerprint = tempFingerprint;
+			curVal = tempValue;
+			shift = 1n << BigInt(curHash);
+			if ((isFull & shift) === 0n) { failed_second_table = true; }
+		}
+
+		let curHash = hash1 ^ hash2 ^ Math.floor(Math.random() * 2) ? 0 : hash3, isFull = 0n;
+		let shift = 1n << BigInt(curHash), failed_first_table = false, failed_second_table = false;
+		while (!failed_first_table || !failed_second_table) {
+			const tempKey = this.keySet[curHash];
+			const tempFingerprint = this.fingerSet[curHash];
+			const tempValue = this.fingerSet[curHash];
+			this.keySet[curHash] = curKey;
+			this.fingerSet[curHash] = curFingerprint;
+			this.values[curHash] = curVal;
+			isFull |= 1n << BigInt(curHash);
+
+			curHash ^= this.secondary_hash(tempFingerprint);
+			if (!this.keySet[curHash]) {
+				this.keySet[curHash] = tempKey;
+				this.fingerSet[curHash] = tempFingerprint;
+				this.values[curHash] = tempValue;
+				return;
+			}
+			
+			curKey = tempKey;
+			curFingerprint = tempFingerprint;
+			curVal = tempValue;
+			shift = 1n << BigInt(curHash);
+			if ((isFull & shift) === 0n) { failed_first_table = true; }
+
+			const tempKey = this.keySet[curHash];
+			const tempFingerprint = this.fingerSet[curHash];
+			const tempValue = this.values[curHash];
+			this.keySet[curHash] = curKey;
+			this.fingerSet[curHash] = curFingerprint;
+			this.values[curHash] = curVal;
+			isFull |= 1n << BigInt(curHash);
+
+			curHash ^= this.secondary_hash(tempFingerprint);
+			if (!this.keySet[curHash]) {
+				this.keySet[curHash] = tempKey;
+				this.fingerSet[curHash] = tempFingerprint;
+				this.values[curHash] = tempValue;
+				return;
+			}
+			
+			curKey = tempKey;
+			curFingerprint = tempFingerprint;
+			curVal = tempValue;
+			shift = 1n << BigInt(curHash);
+			if ((isFull & shift) === 0n) { failed_second_table = true; }
+		}
+
+		//Couldn't find a slot, lets rehash!
+		this.rehash();
+		this.insert(key, value);
+	};
+	this.lookup = function(key) {
+		if (!this.iskey(key)) return null;
+		const fingerprint = this.fingerprinter(key), hash1 = this.main_hash(key);
+		const hash2 = this.main_hash(fingerprint), hash3 = this.secondary_hash(fingerprint);
+		if (this.keySet[hash1] === key) { return this.values[hash1]; }
+		if (this.keySet[hash1 ^ hash2] === key) { return this.values[hash1 ^ hash2] = value; }
+		if (this.keySet[hash1 ^ hash3] === key) { return this.values[hash1 ^ hash3] = value; }
+		return this.values[hash1 ^ hash2 ^ hash3];
+	};
+	this.delete = function(key) {
+		if (!this.iskey(key)) return;
+		const fingerprint = this.fingerprinter(key), hash1 = this.main_hash(key);
+		const hash2 = this.main_hash(fingerprint), hash3 = this.secondary_hash(fingerprint);
+		if (this.keySet[hash1] === key) { this.keySet[hash1] = null; this.values[hash1] = null; return; }
+		if (this.keySet[hash1 ^ hash2] === key) { this.keySet[hash1 ^ hash2] = null; this.values[hash1 ^ hash2] = null; return; }
+		if (this.keySet[hash1 ^ hash3] === key) { this.keySet[hash1 ^ hash3] = null; this.values[hash1 ^ hash3] = null; return; }
+		this.keySet[hash1 ^ hash2 ^ hash3] = null; this.values[hash1 ^ hash2 ^ hash3] = null; return;
+	};
+	this.clear = function() {
+		this.keyCount = 0;
+		this.capacity = 0;
+		this.keySet = new Array(this.capacity);
+		this.fingerSet = new Array(this.capacity);
+		this.values = new Array(this.capacity);
+		this.rehash();
+	};
+	this.rehash();
+}
+
 //A implementation of a type of hash set called a cuckoo hash filter.
 function cuckoo_hash_filter(fingerprinter) {
 	this.capacity = 0;
@@ -282,7 +501,7 @@ function cuckoo_hash_filter(fingerprinter) {
 			for (key in this.keySet) { queue.push(this.keySet[key]); }
 			this.keySet = new Array(this.capacity);
 			
-			//Select 3 new hash functions from a known universal hash family
+			//Select 2 new hash functions from a known universal hash family
 			const r1 = Math.floor(Math.random() * this.capacity), r2 = Math.floor(Math.random() * this.capacity);
 			this.hash1 = function(key) { return (key * r1 + r2) % this.capacity; };
 			const r3 = Math.floor(Math.random() * this.capacity), r4 = Math.floor(Math.random() * this.capacity);
